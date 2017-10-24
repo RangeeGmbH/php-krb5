@@ -362,7 +362,7 @@ zend_object *php_krb5_ticket_object_new(zend_class_entry *ce TSRMLS_DC)
 
 /* Helper functions */
 /* {{{ Parse options array for initKeytab()/initPassword() */
-static int php_krb5_parse_init_creds_opts(zval *opts, krb5_get_init_creds_opt *cred_opts, char **in_tkt_svc, char **vfy_keytab TSRMLS_DC)
+static int php_krb5_parse_init_creds_opts(zval *opts, krb5_get_init_creds_opt *cred_opts, char **in_tkt_svc, char **vfy_keytab TSRMLS_DC, krb5_boolean *enterprise)
 {
 	int retval = 0;
 	zval *tmp = NULL;
@@ -427,6 +427,12 @@ static int php_krb5_parse_init_creds_opts(zval *opts, krb5_get_init_creds_opt *c
 		}
 
 		zend_string_release(str);
+	}
+
+	/* enterprise */
+	tmp = zend_compat_hash_find(HASH_OF(opts), "enterprise", sizeof("enterprise"));
+	if (tmp != NULL) {
+		*enterprise = zval_is_true(tmp);
 	}
 
 	return retval;
@@ -776,13 +782,6 @@ PHP_METHOD(KRB5CCache, initPassword)
 	}
 
     do {
-	memset(&princ, 0, sizeof(princ));
-	if ((retval = krb5_parse_name(ccache->ctx, sprinc, &princ))) {
-		errstr = "Cannot parse Kerberos principal (%s)";
-		break;
-	}
-	have_princ = 1;
-
 #ifdef KRB5_GET_INIT_CREDS_OPT_CANONICALIZE
 	if ((retval = krb5_get_init_creds_opt_alloc(ccache->ctx, &cred_opts))) {
 		errstr = "Cannot allocate cred_opts (%s)";
@@ -793,8 +792,9 @@ PHP_METHOD(KRB5CCache, initPassword)
 #endif
 	have_cred_opts = 1;
 
+	krb5_boolean enterprise = FALSE;
 	if (opts != NULL) {
-		if ((retval = php_krb5_parse_init_creds_opts(opts, cred_opts, &in_tkt_svc, &vfy_keytab TSRMLS_CC))) {
+		if ((retval = php_krb5_parse_init_creds_opts(opts, cred_opts, &in_tkt_svc, &vfy_keytab TSRMLS_CC, &enterprise))) {
 			errstr = "Cannot parse credential options (%s)";
 			break;
 		}
@@ -806,6 +806,14 @@ PHP_METHOD(KRB5CCache, initPassword)
 			expire_callback_func,
 			ccache);
 #endif
+
+    int flags = enterprise ? KRB5_PRINCIPAL_PARSE_ENTERPRISE : 0;
+	memset(&princ, 0, sizeof(princ));
+	if ((retval = krb5_parse_name_flags(ccache->ctx, sprinc, flags, &princ))) {
+		errstr = "Cannot parse Kerberos principal (%s)";
+		break;
+	}
+	have_princ = 1;
 
 	memset(&creds, 0, sizeof(creds));
 	if ((retval = krb5_get_init_creds_password(ccache->ctx, &creds, princ, spass, NULL, 0, 0, in_tkt_svc, cred_opts))) {
@@ -923,7 +931,8 @@ PHP_METHOD(KRB5CCache, initKeytab)
 	have_cred_opts = 1;
 
 	if(opts) {
-		if ((retval = php_krb5_parse_init_creds_opts(opts, cred_opts, &in_tkt_svc, &vfy_keytab TSRMLS_CC))) {
+		krb5_boolean enterprise = FALSE;
+		if ((retval = php_krb5_parse_init_creds_opts(opts, cred_opts, &in_tkt_svc, &vfy_keytab TSRMLS_CC, &enterprise))) {
 			errstr = "Cannot parse credential options";
 			break;
 		}
