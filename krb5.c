@@ -808,7 +808,7 @@ PHP_METHOD(KRB5CCache, initPassword)
 			ccache);
 #endif
 
-    int flags = enterprise ? KRB5_PRINCIPAL_PARSE_ENTERPRISE : 0;
+	int flags = enterprise ? KRB5_PRINCIPAL_PARSE_ENTERPRISE : 0;
 	memset(&princ, 0, sizeof(princ));
 	if ((retval = krb5_parse_name_flags(ccache->ctx, sprinc, flags, &princ))) {
 		errstr = "Cannot parse Kerberos principal (%s)";
@@ -907,8 +907,27 @@ PHP_METHOD(KRB5CCache, initKeytab)
 #endif
 
     do {
+#ifdef KRB5_GET_INIT_CREDS_OPT_CANONICALIZE
+	if ((retval = krb5_get_init_creds_opt_alloc(ccache->ctx, &cred_opts))) {
+		errstr = "Cannot allocate cred_opts (%s)";
+		break;
+	}
+#else
+	krb5_get_init_creds_opt_init(cred_opts);
+#endif
+	have_cred_opts = 1;
+
+	krb5_boolean enterprise = FALSE;
+	if(opts) {
+		if ((retval = php_krb5_parse_init_creds_opts(opts, cred_opts, &in_tkt_svc, &vfy_keytab TSRMLS_CC, &enterprise))) {
+			errstr = "Cannot parse credential options";
+			break;
+		}
+	}
+
+    int flags = enterprise ? KRB5_PRINCIPAL_PARSE_ENTERPRISE : 0;
 	memset(&princ, 0, sizeof(princ));
-	if ((retval = krb5_parse_name(ccache->ctx, sprinc, &princ))) {
+	if ((retval = krb5_parse_name_flags(ccache->ctx, sprinc, flags, &princ))) {
 		errstr = "Cannot parse Kerberos principal (%s)";
 		break;
 	}
@@ -920,24 +939,6 @@ PHP_METHOD(KRB5CCache, initKeytab)
 		break;
 	}
 	have_keytab = 1;
-
-#ifdef KRB5_GET_INIT_CREDS_OPT_CANONICALIZE
-	if ((retval = krb5_get_init_creds_opt_alloc(ccache->ctx, &cred_opts))) {
-		errstr = "Cannot allocate cred_opts (%s)";
-		break;
-	}
-#else
-	krb5_get_init_creds_opt_init(cred_opts);
-#endif
-	have_cred_opts = 1;
-
-	if(opts) {
-		krb5_boolean enterprise = FALSE;
-		if ((retval = php_krb5_parse_init_creds_opts(opts, cred_opts, &in_tkt_svc, &vfy_keytab TSRMLS_CC, &enterprise))) {
-			errstr = "Cannot parse credential options";
-			break;
-		}
-	}
 
 	memset(&creds, 0, sizeof(creds));
 	if ((retval = krb5_get_init_creds_keytab(ccache->ctx, &creds, princ, keytab, 0, in_tkt_svc, cred_opts))) {
