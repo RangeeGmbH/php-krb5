@@ -822,7 +822,7 @@ PHP_METHOD(KRB5CCache, initPassword)
 	}
 	have_creds = 1;
 
-	if((retval = krb5_cc_initialize(ccache->ctx, ccache->cc, princ))) {
+	if((retval = krb5_cc_initialize(ccache->ctx, ccache->cc, creds.client))) {
 		errstr = "Failed to initialize credential cache (%s)";
 		break;
 	}
@@ -946,7 +946,7 @@ PHP_METHOD(KRB5CCache, initKeytab)
 	}
 	have_creds = 1;
 
-	if ((retval = krb5_cc_initialize(ccache->ctx, ccache->cc, princ))) {
+	if ((retval = krb5_cc_initialize(ccache->ctx, ccache->cc, creds.client))) {
 		errstr = "Failed to initialize credential cache (%s)";
 		break;
 	}
