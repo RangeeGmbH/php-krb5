@@ -68,6 +68,7 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_KRB5CCache_changePassword, 0, 0, 3)
 	ZEND_ARG_INFO(0, principal)
 	ZEND_ARG_INFO(0, oldpass)
 	ZEND_ARG_INFO(0, newpass)
+	ZEND_ARG_ARRAY_INFO(0, options, 0)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_KRB5CCache_open, 0, 0, 1)
@@ -428,6 +429,25 @@ static int php_krb5_parse_init_creds_opts(zval *opts, krb5_get_init_creds_opt *c
 		}
 
 		zend_string_release(str);
+	}
+
+	/* enterprise */
+	tmp = zend_compat_hash_find(HASH_OF(opts), "enterprise", sizeof("enterprise"));
+	if (tmp != NULL) {
+		*enterprise = zval_is_true(tmp);
+	}
+
+	return retval;
+} /* }}} */
+
+/* {{{ Parse options array for changePassword() */
+static int php_krb5_parse_chpw_creds_opts(zval *opts, krb5_boolean *enterprise)
+{
+	int retval = 0;
+	zval *tmp = NULL;
+
+	if (Z_TYPE_P(opts) != IS_ARRAY) {
+		return KRB5KRB_ERR_GENERIC;
 	}
 
 	/* enterprise */
@@ -1432,7 +1452,7 @@ PHP_METHOD(KRB5CCache, renew)
 /* }}} */
 
 
-/* {{{ proto bool KRB5CCache::changePassword( string $principal, string $oldpass, string $newpass )
+/* {{{ proto bool KRB5CCache::changePassword( string $principal, string $oldpass, string $newpass [, array $options ] )
    Changes a principal's password using kpasswd */
 PHP_METHOD(KRB5CCache, changePassword)
 {
@@ -1448,6 +1468,7 @@ PHP_METHOD(KRB5CCache, changePassword)
 	strsize_t opass_len = 0;
 	char *npass = NULL;
 	strsize_t npass_len = 0;
+	zval *opts = NULL;
 
 	krb5_principal princ;
 	int have_princ = 0;
@@ -1464,7 +1485,7 @@ PHP_METHOD(KRB5CCache, changePassword)
 	cred_opts = &cred_opts_struct;
 #endif
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sss", &sprinc, &sprinc_len, &opass, &opass_len, &npass, &npass_len) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sss|a", &sprinc, &sprinc_len, &opass, &opass_len, &npass, &npass_len, &opts) == FAILURE) {
 		zend_throw_exception(NULL, "Failed to parse arglist", 0 TSRMLS_CC);
 		RETURN_FALSE;
 	}
@@ -1476,8 +1497,17 @@ PHP_METHOD(KRB5CCache, changePassword)
 		break;
 	}
 
+	krb5_boolean enterprise = FALSE;
+	if (opts != NULL) {
+		if ((retval = php_krb5_parse_chpw_creds_opts(opts, &enterprise))) {
+			errstr = "Cannot parse credential options (%s)";
+			break;
+		}
+    }
+
+	int flags = enterprise ? KRB5_PRINCIPAL_PARSE_ENTERPRISE : 0;
 	memset(&princ, 0, sizeof(princ));
-	if ((retval = krb5_parse_name(ctx, sprinc, &princ))) {
+	if ((retval = krb5_parse_name_flags(ctx, sprinc, flags, &princ))) {
 		errstr = "Cannot parse Kerberos principal (%s)";
 		break;
 	}
